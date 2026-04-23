@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.ipynb_checkpoints/
+*.egg-info/
+*.egg
+.env
+.venv/
+venv/
+
+# Results: traces, reports, plots — all land in /srv/240d/results/ on cortex,
+# not in the repo. These patterns catch accidents.
+*.nsys-rep
+*.ncu-rep
+*.qdrep
+results/**/*.json
+results/**/*.png
+results/**/*.csv
+!results/**/.gitkeep

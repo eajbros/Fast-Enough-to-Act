@@ -1,0 +1,47 @@
+name: openvla
+# Role: OpenVLA inference + QLoRA fine-tune + VLA-side optimizations.
+# Owned by: Purush.
+# Install: conda env create -f envs/openvla.yml
+#          conda activate openvla
+#          # Flash-attn must be installed after torch (no prebuilt wheels for all configs):
+#          pip install flash-attn==2.6.3 --no-build-isolation
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  # System libs that CUDA/MuJoCo/OpenCV sometimes need
+  - libxkbcommon
+  - pip:
+      # PyTorch 2.4.1 + bundled CUDA 12.4 runtime (works with our driver 590.48.01).
+      # If you see "CUDA runtime not found" errors, reinstall with the --index-url below.
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - torch==2.4.1
+      - torchvision==0.19.1
+      # Core model + adapter stack
+      - transformers==4.46.3
+      - accelerate==1.1.1
+      - bitsandbytes==0.44.1           # 4-bit/INT4 quantization
+      - peft==0.13.2                   # LoRA / QLoRA adapters
+      - sentencepiece
+      - safetensors
+      # OpenVLA dependencies
+      - draccus==0.8.0                 # OpenVLA config system
+      - tensorflow==2.15.0             # for RLDS + tfds
+      - tensorflow-datasets==4.9.3
+      - dlimp @ git+https://github.com/moojink/dlimp_openvla
+      - rlds[tensorflow]
+      # Profiling helpers
+      - nvtx==0.2.10
+      # Logging
+      - wandb
+      # Utilities
+      - numpy<2.0
+      - pillow
+      - opencv-python-headless
+      - tqdm
+      - rich
+      - matplotlib
+      - pandas

@@ -1,0 +1,35 @@
+name: profiling
+# Role: Nsight trace analysis, roofline plotting, Pareto frontiers, paper figures.
+# Owned by: Ethan (primary), used by everyone for plot generation.
+# Install: conda env create -f envs/profiling.yml
+#          conda activate profiling
+# Note: ncu / nsys themselves are system binaries (already at /usr/bin/{ncu,nsys} on cortex).
+# This env only provides the *analysis* tooling, not the profilers themselves.
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      # Need a thin PyTorch install to load checkpoint metadata (not for inference)
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - torch==2.4.1
+      # Plotting + data wrangling
+      - pandas==2.2.3
+      - numpy<2.0
+      - matplotlib==3.9.2
+      - seaborn==0.13.2
+      - plotly==5.24.1
+      # Jupyter for exploratory plots
+      - jupyterlab==4.3.1
+      - ipywidgets
+      # Roofline tools
+      - roofline-toolkit==1.0.4        # community BerkeleyLab tool for roofline plots
+      # Parse nsys/ncu exports
+      - sqlite-utils==3.37             # nsys databases are SQLite
+      - pynvml==11.5.3                 # query GPU metadata for roofline peaks
+      # Utilities
+      - pillow
+      - tqdm
+      - rich
+      - pyyaml
