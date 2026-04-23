@@ -1,116 +1,75 @@
 # Fast-Enough-to-Act
 
-> "Fast Enough to Act: A Roofline Study of Autoregressive VLA vs Diffusion Policy Inference on a Fixed GPU"
-> CSE 240D, Spring 2026. Submitted Apr 19.
+Roofline study of two robot-action paradigms on the same GPU. CSE 240D final project, Spring 2026.
 
-Roofline study comparing **OpenVLA** (autoregressive, memory-bandwidth-bound) against **Diffusion Policy** (iterative denoising, compute-bound) on the **same RTX 4060 Laptop GPU**, measuring how each paradigm responds to paradigm-specific and shared optimizations.
+> *"Fast Enough to Act: A Roofline Study of Autoregressive VLA vs. Diffusion Policy Inference on a Fixed GPU"* — proposal submitted Apr 19, 2026.
 
-The paper's central figure: both paradigms' dominant kernels plotted on the same roofline, showing they occupy opposite regions.
+## Why this project exists
+
+Modern robot-control models come in two shapes:
+
+- **Autoregressive VLAs** (OpenVLA) — a 7B language model emits one action token at a time. Each token reads a growing KV cache. The kernel that dominates latency is a vector-matrix multiply whose bottleneck is reading weights from VRAM — **memory-bandwidth-bound**.
+- **Diffusion policies** (Diffusion Policy) — a small dense net denoises action sequences over K iterative steps. Each step is a matrix-matrix product through the same layers — **compute-bound**.
+
+Both want the same thing (actions at ~30 Hz on an 8 GB GPU) but their bottlenecks sit on **opposite sides of the GPU roofline**. Nobody has published a hardware comparison of these two paradigms at batch-of-one (the only regime that matters for real-time robot control). We're building one.
+
+The central figure plots both paradigms' dominant kernels on one roofline. The second finding: an optimization like INT-quantization moves each paradigm *differently* because they started on different sides of the ridge — which tells hybrid-architecture designers where to spend compute and where to spend bandwidth.
+
+Canonical plan + research framing: **`Classes/CSE-240D/240D Project.md`** in the vault. This README is the repo-level pointer; the vault is the source of truth.
 
 ## Team
 
-| Person | Track | Owns |
-|---|---|---|
-| Purush | OpenVLA | `scripts/bench_openvla.py`, VLA optimizations (INT4, FA-2, KV compression, OFT), roofline dots for memory-bound decode |
-| Yuva   | Diffusion Policy | `scripts/bench_dp.py`, DDIM step reduction + FP16 + torch.compile + INT8, roofline dots for compute-bound denoise |
-| Ethan  | Infrastructure | `src/` (timing + plotting utilities), data collection pipeline, Pareto frontiers, paper figures |
-| Azfar  | Robot | Physical bot chassis + PID (stretch demo; not enrolled in 240D) |
+Purush, Yuva, Ethan — all three enrolled in 240D. Azfar handles the robot hardware (separate course, separate repo at `bistable-vlm`).
+
+High-level tracks:
+
+- **OpenVLA** — autoregressive-VLA benchmarks and optimizations
+- **Diffusion Policy** — diffusion-side benchmarks and optimizations
+- **Infrastructure** — timing harness, plotting, Pareto frontiers, paper figures
+
+> ⚠️ **Per-person deliverables are being revised by Purush (2026-04-23).** Until the revision lands, treat the *tracks* above as stable and specific tasks as in flux.
 
 ## Repo layout
 
 ```
-envs/                                conda env recipes, one per role
-├── openvla.yml                      Purush
-├── diffusion.yml                    Yuva
-└── profiling.yml                    Ethan + analysis
-
-scripts/                             runnable benchmark scripts
-├── bench_openvla.py                 M1 (Purush) — OpenVLA baseline latency
-└── bench_dp.py                      M1 (Yuva)   — DP baseline latency (DDPM-100 + DDIM-10)
-
-src/                                 shared Python utilities
-├── timing.py                        torch.cuda.Event → structured JSON (everyone uses this)
-└── plot_roofline.py                 ncu CSV / JSON → PNG roofline plot (Ethan extends)
-
-results/                             .gitkeep only — real artifacts land in /srv/240d/ on cortex
-├── latency/                         Timer JSONs
-├── nsys/                            Nsight Systems traces (*.nsys-rep)
-├── ncu/                             Nsight Compute reports (*.ncu-rep)
-└── roofline/                        PNG plots
+envs/            conda env recipes (one per track)
+scripts/         runnable benchmark entrypoints (bench_*.py, bootstrap-cortex.sh)
+src/             shared utilities: timing.py, plot_roofline.py, gpu_guard.py
+results/         .gitkeep only — real artifacts live on cortex at /srv/240d/results/
+Makefile         make bench-openvla / bench-dp / roofline / status
+CLAUDE.md        context auto-loaded by Claude Code sessions in this repo
 ```
 
-## Environments
+Source code lives per-user in each teammate's home clone. **Data + checkpoints + results live on cortex at `/srv/240d/`** — shared so we don't download 34 GB of weights three times, and so anyone can pick up anyone else's artifacts. Read `/srv/240d/README.md` on cortex for the workspace map.
 
-Cortex doesn't ship system-wide conda — each teammate installs miniforge in their home (see `/srv/240d/TEAMMATES.md`), then:
+## Getting started
+
+First time on cortex, after Purush grants access:
 
 ```bash
-conda env create -f envs/openvla.yml      # Purush
-conda env create -f envs/diffusion.yml    # Yuva
-conda env create -f envs/profiling.yml    # Ethan
-
-conda activate openvla
-pip install flash-attn==2.6.3 --no-build-isolation   # Purush only; must be post-torch
+ssh <you>@cortex
+bash <(curl -fsSL https://raw.githubusercontent.com/eajbros/Fast-Enough-to-Act/main/scripts/bootstrap-cortex.sh) --role <openvla|diffusion|profiling>
 ```
 
-All three envs use PyTorch 2.4.1 + bundled CUDA 12.4 runtime (works with cortex's driver 590).
+Idempotent — installs miniforge, clones this repo, creates your conda env, runs a torch+CUDA smoke test. See `/srv/240d/TEAMMATES.md` for the step-by-step.
 
-## Shared data on cortex (not in the repo)
-
-Pre-pulled by Purush so nobody downloads 14 GB three times:
-
-| Path | What | Size |
-|---|---|---|
-| `/srv/240d/checkpoints/openvla-7b/` | OpenVLA base checkpoint | 15 GB |
-| `/srv/240d/checkpoints/openvla-7b-libero-spatial/` | LIBERO-Spatial fine-tune (for task-quality eval) | ~14 GB |
-| `/srv/240d/checkpoints/diffusion-policy-pusht/latest.ckpt` | DP Push-T CNN baseline | ~200 MB |
-| `/srv/240d/repos/openvla/` | Upstream OpenVLA source (read-only reference) | 2 MB |
-| `/srv/240d/repos/diffusion_policy/` | Upstream DP source | 32 MB |
-
-Your Timer output lands under `/srv/240d/results/latency/<your-name>/<YYYY-MM-DD>/`.
-
-## Smoke test — verify env
+After that, day-to-day flow:
 
 ```bash
-conda activate openvla     # or diffusion, or profiling
-python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
-# Expected: NVIDIA GeForce RTX 4060 Laptop GPU
-
-gpu-check                  # runs /srv/240d/bin/gpu-check — shows GPU state + who's using it
+240d-gpu status                              # see the card
+240d-gpu claim --note "what you're doing"    # stop vault AI, lock GPU
+make bench-openvla                           # or bench-dp, roofline
+240d-gpu release                             # restores vault AI
 ```
 
-## Run a baseline benchmark
+`make bench-*` refuses to run unless the GPU is claimed by you (via `src/gpu_guard.py`), so forgetting to claim fails loud with a pointer, not silently-wrong numbers.
 
-```bash
-# Purush (after conda activate openvla)
-python scripts/bench_openvla.py --runs 10 --warmup 3
-# → writes /srv/240d/results/latency/purush/YYYY-MM-DD/openvla-baseline.json
-
-# Yuva (after conda activate diffusion)
-python scripts/bench_dp.py --runs 10 --warmup 3
-# → writes /srv/240d/results/latency/yuva/YYYY-MM-DD/dp-ddpm100.json + dp-ddim10.json
-```
-
-## Plot a roofline
-
-```bash
-# Ethan (after conda activate profiling)
-python src/plot_roofline.py --dummy --output results/roofline/ethan/YYYY-MM-DD/dummy.png
-# Verifies the plotting pipeline end-to-end with placeholder kernel data.
-
-# Week 2+: real data from ncu
-python src/plot_roofline.py --input /srv/240d/results/ncu/purush/.../openvla.csv --paradigm vla --output ...
-```
-
-## GPU etiquette
-
-See `/srv/240d/README.md` on cortex. Short version:
-1. `gpu-check` before launching.
-2. For `ncu` profiling: `gpu-exclusive` first (stops cortex-ask + Ollama), do your run, `gpu-restore` when done.
-3. Coordinate long jobs in Slack — the 4060 has 8 GB of VRAM, serialize heavy workloads.
+For the why, how, and troubleshooting of any of the above: **`/srv/240d/WORKSPACE-GUIDE.md`** on cortex.
 
 ## Related
 
-- Proposal (canonical): Google Doc `240D Project Proposal` + vault `Classes/CSE-240D/240D Project.md`
-- Technical decisions: vault `Classes/CSE-240D/240D Implementation.md`
-- Team study curriculum: vault `Classes/CSE-240D/240D Study Plan.md`
-- Robot hardware (Azfar's side): `bistable-vlm` repo, lives on the Pi (`ssh bistable`)
+- Canonical plan: vault `Classes/CSE-240D/240D Project.md`
+- Workspace map: `/srv/240d/README.md` on cortex
+- Day-to-day patterns: `/srv/240d/WORKSPACE-GUIDE.md`
+- Onboarding walk-through: `/srv/240d/TEAMMATES.md`
+- Robot hardware (separate repo): `bistable-vlm` on the Pi (`ssh bistable`)

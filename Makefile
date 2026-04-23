@@ -37,8 +37,8 @@ env-profiling: ## Create/update the profiling conda env  (Ethan)
 # ─── Bench runs (require GPU claim) ───────────────────────────────────────
 # Each bench target calls gpu_guard first — exits with a pointer to
 # `240d-gpu claim` if not claimed by current user.
-.PHONY: gpu-check
-gpu-check:     ## Exit 0 if current user holds the GPU claim, else 1
+.PHONY: gpu-claimed
+gpu-claimed:   ## Exit 0 if current user holds the GPU claim, else 1
 	@python -m src.gpu_guard --require || { \
 		echo ""; \
 		echo "  ❯ GPU not claimed by you. Before running a bench:"; \
@@ -50,13 +50,13 @@ gpu-check:     ## Exit 0 if current user holds the GPU claim, else 1
 	}
 
 .PHONY: bench-openvla
-bench-openvla: gpu-check  ## Run OpenVLA baseline latency bench (Purush)
+bench-openvla: gpu-claimed  ## Run OpenVLA baseline latency bench
 	mkdir -p $(RESULTS_ROOT)/latency/$(USER_)/$(DATE)
 	python scripts/bench_openvla.py --runs 10 --warmup 3 \
 		--out $(RESULTS_ROOT)/latency/$(USER_)/$(DATE)/openvla-baseline.json
 
 .PHONY: bench-dp
-bench-dp: gpu-check  ## Run Diffusion Policy baseline latency bench (Yuva)
+bench-dp: gpu-claimed  ## Run Diffusion Policy baseline latency bench
 	mkdir -p $(RESULTS_ROOT)/latency/$(USER_)/$(DATE)
 	python scripts/bench_dp.py --ddim-steps 10 --runs 10 --warmup 3 \
 		--out $(RESULTS_ROOT)/latency/$(USER_)/$(DATE)/dp-ddim10.json
